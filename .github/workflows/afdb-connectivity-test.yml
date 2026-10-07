@@ -1,0 +1,39 @@
+name: AfDB Connectivity Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-afdb:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Test AfDB with curl
+        shell: bash
+        run: |
+          URL="https://www.afdb.org/en/documents/category/specific-procurement-notices"
+
+          echo "Testing AfDB URL..."
+          echo "$URL"
+
+          HTTP_CODE=$(curl -L -sS \
+            -o /tmp/afdb_response.html \
+            -w "%{http_code}" \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36" \
+            -H "Accept-Language: en-US,en;q=0.9" \
+            "$URL")
+
+          echo "================================"
+          echo "AfDB HTTP Status: $HTTP_CODE"
+          echo "================================"
+
+          echo "First 500 bytes of response:"
+          head -c 500 /tmp/afdb_response.html || true
+          echo
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "PASS: GitHub Actions can access AfDB."
+          else
+            echo "FAIL: AfDB returned HTTP $HTTP_CODE."
+            exit 1
+          fi
