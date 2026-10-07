@@ -1,4 +1,4 @@
-name: AfDB Connectivity Test
+name: AfDB Browser Connectivity Test
 
 on:
   workflow_dispatch:
@@ -8,32 +8,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test AfDB with curl
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Test AfDB with Chromium
         shell: bash
         run: |
-          URL="https://www.afdb.org/en/documents/category/specific-procurement-notices"
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
 
-          echo "Testing AfDB URL..."
-          echo "$URL"
+          url = "https://www.afdb.org/en/documents/category/specific-procurement-notices"
 
-          HTTP_CODE=$(curl -L -sS \
-            -o /tmp/afdb_response.html \
-            -w "%{http_code}" \
-            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36" \
-            -H "Accept-Language: en-US,en;q=0.9" \
-            "$URL")
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
 
-          echo "================================"
-          echo "AfDB HTTP Status: $HTTP_CODE"
-          echo "================================"
+              page = browser.new_page(
+                  viewport={"width": 1366, "height": 768},
+                  user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36"
+              )
 
-          echo "First 500 bytes of response:"
-          head -c 500 /tmp/afdb_response.html || true
-          echo
+              response = page.goto(
+                  url,
+                  wait_until="domcontentloaded",
+                  timeout=120000
+              )
 
-          if [ "$HTTP_CODE" = "200" ]; then
-            echo "PASS: GitHub Actions can access AfDB."
-          else
-            echo "FAIL: AfDB returned HTTP $HTTP_CODE."
-            exit 1
-          fi
+              page.wait_for_timeout(15000)
+
+              print("HTTP STATUS:", response.status if response else "NO RESPONSE")
+              print("FINAL URL:", page.url)
+              print("TITLE:", page.title())
+
+              html = page.content()
+              print("HTML LENGTH:", len(html))
+
+              challenge = (
+                  "Just a moment" in page.title()
+                  or "challenges.cloudflare.com" in html
+              )
+
+              if challenge:
+                  print("FAIL: Cloudflare challenge still active.")
+                  browser.close()
+                  raise SystemExit(1)
+
+              print("PASS: Chromium reached AfDB page.")
+              browser.close()
+          PY
